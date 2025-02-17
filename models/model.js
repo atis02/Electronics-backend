@@ -9,16 +9,48 @@ const User = sequelize.define(
       primaryKey: true,
       defaultValue: Sequelize.literal("gen_random_uuid()"), // Используем функцию для генерации UUID
     },
-    email: { type: DataTypes.STRING, unique: true, allowNull: false },
+    email: { type: DataTypes.STRING, allowNull: false },
     password: { type: DataTypes.STRING, allowNull: false },
     role: { type: DataTypes.STRING, defaultValue: "user", allowNull: true },
+    // after developing let phoneNumber allowNull false
+    phoneNumber: { type: DataTypes.STRING, unique: true, allowNull: false },
+    name: { type: DataTypes.STRING, allowNull: false },
+    surname: { type: DataTypes.STRING, allowNull: false },
+    image: { type: DataTypes.STRING, allowNull: true },
+    isBlocked: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      allowNull: true,
+    },
+    isActive: { type: DataTypes.BOOLEAN, allowNull: true, defaultValue: true },
   },
+
   {
+    tableName: "users",
     timestamps: true, // автоматически добавит createdAt и updatedAt
   }
 );
+const UserForAdminPage = sequelize.define(
+  "userForAdminPage",
+  {
+    id: {
+      type: DataTypes.UUID,
+      primaryKey: true,
+      defaultValue: Sequelize.literal("gen_random_uuid()"),
+    },
+    password: { type: DataTypes.STRING, allowNull: false },
+    role: { type: DataTypes.STRING, defaultValue: "user", allowNull: true },
+    phoneNumber: { type: DataTypes.STRING, unique: true, allowNull: false },
+    name: { type: DataTypes.STRING, allowNull: false },
+    isActive: { type: DataTypes.BOOLEAN, allowNull: true, defaultValue: true },
+  },
 
-const Product = sequelize.define("product", {
+  {
+    tableName: "userForAdminPage",
+    timestamps: true,
+  }
+);
+const Product = sequelize.define("products", {
   id: {
     type: DataTypes.UUID,
     primaryKey: true,
@@ -35,11 +67,10 @@ const Product = sequelize.define("product", {
   brandId: { type: DataTypes.UUID, allowNull: false },
   statusId: { type: DataTypes.UUID, allowNull: false },
   isActive: { type: DataTypes.BOOLEAN, defaultValue: true },
-
   descriptionTm: { type: DataTypes.STRING, allowNull: true },
   descriptionRu: { type: DataTypes.STRING, allowNull: true },
   descriptionEn: { type: DataTypes.STRING, allowNull: true },
-
+  totalSelling: { type: DataTypes.INTEGER, defaultValue: 0 },
   sellPrice: { type: DataTypes.FLOAT, allowNull: false },
   incomePrice: { type: DataTypes.FLOAT, allowNull: false, defaultValue: 0 },
   discount_priceTMT: {
@@ -57,16 +88,34 @@ const Product = sequelize.define("product", {
   imageThree: { type: DataTypes.STRING, allowNull: true },
   imageFour: { type: DataTypes.STRING, allowNull: true },
   imageFive: { type: DataTypes.STRING, allowNull: true },
-
-  // fullImages: {
-  //   type: DataTypes.ARRAY(DataTypes.STRING), // Array of image paths
-  //   allowNull: true,
-  //   defaultValue: [],
-  // },
   productQuantity: {
     type: DataTypes.INTEGER,
     allowNull: false,
     defaultValue: 0,
+  },
+});
+const ProductProperties = sequelize.define("productProperties", {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true,
+  },
+  productId: {
+    type: DataTypes.UUID,
+    allowNull: false,
+    references: {
+      model: "products",
+      key: "id",
+    },
+    onDelete: "CASCADE",
+  },
+  key: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
+  value: {
+    type: DataTypes.STRING,
+    allowNull: false,
   },
 });
 
@@ -211,10 +260,25 @@ const Order = sequelize.define("order", {
   customerSurname: { type: DataTypes.STRING, allowNull: false },
   customerPhoneNumber: { type: DataTypes.STRING, allowNull: false },
   orderRegion: { type: DataTypes.STRING, allowNull: false },
-  orderCity: { type: DataTypes.STRING, allowNull: false },
+  orderDeliveryCityPaymentId: { type: DataTypes.UUID, allowNull: false },
   shippingAddress: { type: DataTypes.STRING, allowNull: false },
 });
-
+const OrderDeliveryCityPayment = sequelize.define(
+  "orderDeliveryCityPayment",
+  {
+    id: {
+      type: DataTypes.UUID,
+      primaryKey: true,
+      defaultValue: Sequelize.literal("gen_random_uuid()"), // Используем UUID
+    },
+    nameTm: { type: DataTypes.STRING, allowNull: false },
+    nameRu: { type: DataTypes.STRING, allowNull: false },
+    nameEn: { type: DataTypes.STRING, allowNull: false },
+    deliveryPrice: { type: DataTypes.INTEGER, allowNull: false },
+    isActive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+  },
+  { tableName: "orderDeliveryCityPayment" }
+);
 const OrderItem = sequelize.define("orderItem", {
   id: {
     type: DataTypes.UUID,
@@ -258,20 +322,20 @@ const Auction = sequelize.define("auction", {
     primaryKey: true,
   },
   auctionID: { type: DataTypes.INTEGER, allowNull: false },
-  startDateAuction: { type: DataTypes.STRING, allowNullL: false },
-  endDateAuction: { type: DataTypes.STRING, allowNullL: false },
+  startDateAuction: { type: DataTypes.DATE, allowNullL: false },
+  endDateAuction: { type: DataTypes.DATE, allowNullL: false },
   auctionProductPriceStart: { type: DataTypes.FLOAT, allowNull: false },
   auctionProductPriceCurrent: { type: DataTypes.INTEGER, defaultValue: 0 },
   productId: { type: DataTypes.UUID, allowNull: false },
   lastBidderId: {
     type: DataTypes.UUID,
     allowNull: true,
-    references: { model: "user", key: "id" },
+    references: { model: "users", key: "id" },
   },
-  // isActive: {
-  //   type: DataTypes.BOOLEAN,
-  //   defaultValue: false,
-  // },
+  isActive: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+  },
 });
 const UserAuction = sequelize.define("userAuction", {
   id: {
@@ -285,7 +349,7 @@ const UserAuction = sequelize.define("userAuction", {
   },
   userId: {
     type: DataTypes.UUID,
-    references: { model: "user", key: "id" },
+    references: { model: "users", key: "id" },
   },
   joinedAt: { type: DataTypes.DATE, defaultValue: Sequelize.NOW },
 });
@@ -432,8 +496,39 @@ const Partner = sequelize.define("partner", {
   image: { type: DataTypes.STRING, allowNull: true },
   isActive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
 });
+const ProductOfWeek = sequelize.define("productOfWeek", {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true,
+  },
+  productId: { type: DataTypes.UUID, allowNull: false },
 
+  isActive: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+  },
+});
 // relationships
+ProductProperties.belongsTo(Product, {
+  foreignKey: "productId",
+  as: "products",
+});
+Product.hasMany(ProductProperties, {
+  foreignKey: "productId",
+  as: "properties",
+  onDelete: "CASCADE",
+});
+
+ProductOfWeek.belongsTo(Product, {
+  foreignKey: "productId",
+  as: "products",
+});
+
+Product.hasOne(ProductOfWeek, {
+  foreignKey: "productId",
+  as: "productOfWeek",
+});
 
 Auction.belongsTo(Product, { foreignKey: "productId", as: "product" });
 Product.hasOne(Auction, { foreignKey: "productId" });
@@ -583,7 +678,13 @@ Size.hasMany(Basket, {
   as: "baskets",
 });
 
-// Basket
+OrderDeliveryCityPayment.hasMany(Order, {
+  foreignKey: "orderDeliveryCityPaymentId",
+  onDelete: "SET NULL",
+});
+Order.belongsTo(OrderDeliveryCityPayment, {
+  foreignKey: "orderDeliveryCityPaymentId",
+});
 
 Order.hasMany(OrderItem, { foreignKey: "orderId" });
 OrderItem.belongsTo(Order, { foreignKey: "orderId" });
@@ -591,9 +692,6 @@ OrderItem.belongsTo(Order, { foreignKey: "orderId" });
 Product.hasMany(OrderItem, { foreignKey: "productId" });
 OrderItem.belongsTo(Product, { foreignKey: "productId" });
 
-// Order -> OrderStatus relationship
-// In Order model
-// In Order model
 Order.belongsTo(OrderStatus, {
   foreignKey: "orderStatusId", // Foreign key in Order model
   as: "orderStatusDetails", // Rename alias to avoid collision
@@ -619,6 +717,7 @@ module.exports = {
   Basket,
   BasketProduct,
   Product,
+  ProductProperties,
   SizeTable,
   Size,
   Category,
@@ -634,4 +733,7 @@ module.exports = {
   Partner,
   Auction,
   UserAuction,
+  ProductOfWeek,
+  OrderDeliveryCityPayment,
+  UserForAdminPage,
 };

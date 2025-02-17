@@ -29,10 +29,14 @@ const upload = multer({
 ]);
 
 router.post("/add", upload, productController.create);
+router.post("/addProperty", productController.createProperty);
 router.get("/all", productController.getAll);
 router.get("/getOne", productController.getOne);
 router.delete("/remove", productController.deleteProduct);
+router.delete("/removeProperty", productController.deleteProperty);
 router.put("/update", upload, productController.updateProductDetails);
+router.patch("/updateProperty", productController.updateProperty);
 router.post("/basketProducts", upload, productController.getProductsInBasket);
+router.get("/productProperties", productController.getProductProperty);
 
 module.exports = router;

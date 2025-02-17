@@ -5,6 +5,7 @@ const {
   Segment,
   Status,
   Brand,
+  ProductProperties,
 } = require("../models/model");
 const ApiError = require("../error/apiError");
 const sequelize = require("../database");
@@ -14,8 +15,9 @@ class ProductController {
   async create(req, res, next) {
     const transaction = await sequelize.transaction(); // Start a transaction
     try {
-      const { productDetail } = req.body;
+      const { productDetail, productProperties } = req.body;
       const parsedProductDetails = JSON.parse(productDetail);
+      const parsedProductProperties = JSON.parse(productProperties || "[]");
 
       // Required fields validation
       const requiredFieldsProduct = [
@@ -53,16 +55,15 @@ class ProductController {
         { model: Status, id: parsedProductDetails.statusId, name: "Status" },
         { model: Brand, id: parsedProductDetails.brandId, name: "Brand" },
       ];
-
       for (const check of checks) {
         const exists = await check.model.findByPk(check.id);
         if (!exists) {
           return next(ApiError.badRequest(`${check.name} tapylmady!`));
         }
       }
-
       const { imageOne, imageTwo, imageThree, imageFour, imageFive } =
         req.files || {};
+
       const imagePaths = {
         imageOne: imageOne?.[0]?.filename || null,
         imageTwo: imageTwo?.[0]?.filename || null,
@@ -79,7 +80,6 @@ class ProductController {
           .status(400)
           .json({ message: "At least one image is required." });
       }
-
       // Create the product
       const product = await Product.create(
         {
@@ -100,23 +100,80 @@ class ProductController {
           incomePrice: parsedProductDetails.incomePrice,
           discount_priceTMT: parsedProductDetails.discount_priceTMT,
           discount_pricePercent: parsedProductDetails.discount_pricePercent,
-          ...imagePaths, // Add image paths
           productQuantity: parsedProductDetails.productQuantity,
+          ...imagePaths,
         },
         { transaction }
       );
 
-      await transaction.commit();
+      // Save product properties
+      if (
+        Array.isArray(parsedProductProperties) &&
+        parsedProductProperties.length > 0
+      ) {
+        const productPropertiesData = parsedProductProperties.map((prop) => ({
+          productId: product.id,
+          key: prop.key,
+          value: prop.value,
+        }));
+        await ProductProperties.bulkCreate(productPropertiesData, {
+          transaction,
+        });
+      }
 
+      await transaction.commit();
       return res.status(201).json({
         product,
-        message: "Product, colors, and sizes created successfully",
+        message: "Product and properties created successfully",
       });
     } catch (error) {
       await transaction.rollback(); // Rollback transaction on error
       console.error("Error creating product:", error);
       return next(
         ApiError.badRequest(`Failed to create product: ${error.message}`)
+      );
+    }
+  }
+  async createProperty(req, res, next) {
+    const transaction = await sequelize.transaction(); // Start a transaction
+    try {
+      const { productId, key, value } = req.body; // Получаем данные для добавления свойства
+
+      // Проверка, что все обязательные поля переданы
+      if (!productId || !key || !value) {
+        return next(
+          ApiError.badRequest("productId, key, and value are required")
+        );
+      }
+
+      // Проверяем, существует ли продукт с таким ID
+      const productExists = await Product.findByPk(productId);
+      if (!productExists) {
+        return next(ApiError.badRequest("Product not found"));
+      }
+
+      // Добавляем новое свойство к продукту
+      const newProperty = await ProductProperties.create(
+        {
+          productId,
+          key,
+          value,
+        },
+        { transaction }
+      );
+
+      await transaction.commit();
+      return res.status(201).json({
+        message: "New product property added successfully",
+        productProperty: newProperty,
+      });
+    } catch (error) {
+      await transaction.rollback(); // Rollback transaction on error
+      console.error("Error adding new product property:", error);
+      return next(
+        ApiError.badRequest(
+          `Failed to add new product property: ${error.message}`
+        )
       );
     }
   }
@@ -247,6 +304,48 @@ class ProductController {
       );
     }
   }
+  async updateProperty(req, res, next) {
+    const transaction = await sequelize.transaction(); // Start a transaction
+    try {
+      const { productPropertyId, key, value } = req.body;
+
+      // Проверка, что переданы все необходимые данные
+      if (!productPropertyId || !key || !value) {
+        return next(
+          ApiError.badRequest("productPropertyId, key, and value are required")
+        );
+      }
+      const existProductProperty = await ProductProperties.findByPk(
+        productPropertyId
+      );
+      // Обновляем только нужное свойство
+      if (!existProductProperty) {
+        return next(ApiError.notFound("Product property not found"));
+      }
+      const updatedProperty = await ProductProperties.update(
+        { key, value },
+        { where: { id: productPropertyId }, transaction }
+      );
+
+      // Если свойство не найдено
+      // if (updatedProperty[0] === 0) {
+      //   return next(ApiError.badRequest("Product property not found"));
+      // }
+
+      await transaction.commit();
+      return res.status(200).json({
+        message: "Product property updated successfully",
+      });
+    } catch (error) {
+      await transaction.rollback(); // Rollback transaction on error
+      console.error("Error updating product property:", error);
+      return next(
+        ApiError.badRequest(
+          `Failed to update product property: ${error.message}`
+        )
+      );
+    }
+  }
 
   async getAll(req, res, next) {
     try {
@@ -310,17 +409,19 @@ class ProductController {
         order = [["createdAt", sortOrder]]; // Sorting by creation date
       }
 
-      // Count the total number of products matching the filters
       const countResult = await Product.count({
         where: whereConditions,
-
-        distinct: true, // Ensure distinct products are counted
+        distinct: true,
       });
 
-      // Query the products with pagination and ordering
       const products = await Product.findAll({
         where: whereConditions,
         include: [
+          {
+            model: ProductProperties,
+            as: "properties",
+            attributes: { exclude: ["createdAt", "updatedAt"] },
+          },
           {
             model: Category,
             as: "productCategory",
@@ -386,7 +487,13 @@ class ProductController {
       // Fetch product along with sizes
       const product = await Product.findOne({
         where: { id },
-
+        include: [
+          {
+            model: ProductProperties,
+            as: "properties",
+            attributes: { exclude: ["createdAt", "updatedAt"] },
+          },
+        ],
         attributes: { exclude: ["createdAt", "updatedAt"] }, // Exclude timestamps
         order: [[sortBy, "ASC"]],
       });
@@ -396,6 +503,33 @@ class ProductController {
       }
 
       return res.status(200).json(product);
+    } catch (error) {
+      console.error("Error fetching product:", error);
+      return next(ApiError.badRequest(error.message));
+    }
+  }
+  async getProductProperty(req, res, next) {
+    try {
+      const { productId, sortBy = "createdAt" } = req.query;
+
+      const productExist = await Product.findByPk(productId);
+      if (!productExist) {
+        return next(ApiError.badRequest("Haryt tapylmady!"));
+      }
+
+      // Fetch product along with sizes
+      const productProperties = await ProductProperties.findAll({
+        where: { productId },
+
+        attributes: { exclude: ["createdAt", "updatedAt"] },
+        order: [[sortBy, "ASC"]],
+      });
+
+      if (!productProperties) {
+        return next(ApiError.badRequest("Haryt tapylmady!"));
+      }
+
+      return res.status(200).json(productProperties);
     } catch (error) {
       console.error("Error fetching product:", error);
       return next(ApiError.badRequest(error.message));
@@ -423,6 +557,47 @@ class ProductController {
       return next(ApiError.badRequest(error.message));
     }
   }
+  async deleteProperty(req, res, next) {
+    const transaction = await sequelize.transaction(); // Start a transaction
+    try {
+      const { productPropertyId } = req.query; // Получаем id свойства для удаления
+
+      // Проверка, что передан productPropertyId
+      if (!productPropertyId) {
+        return next(ApiError.badRequest("productPropertyId is required"));
+      }
+      const existProductProperty = await ProductProperties.findByPk(
+        productPropertyId
+      );
+      if (!existProductProperty) {
+        return next(ApiError.notFound("Product property Not found "));
+      }
+      // Удаляем свойство продукта
+      const deletedProperty = await ProductProperties.destroy({
+        where: { id: productPropertyId },
+        transaction,
+      });
+
+      // Если свойство не найдено
+      if (deletedProperty === 0) {
+        return next(ApiError.badRequest("Product property not found"));
+      }
+
+      await transaction.commit();
+      return res.status(200).json({
+        message: "Product property deleted successfully",
+      });
+    } catch (error) {
+      await transaction.rollback(); // Rollback transaction on error
+      console.error("Error deleting product property:", error);
+      return next(
+        ApiError.badRequest(
+          `Failed to delete product property: ${error.message}`
+        )
+      );
+    }
+  }
+
   async getProductsInBasket(req, res, next) {
     try {
       const { ids } = req.body; // Expecting an array of product IDs

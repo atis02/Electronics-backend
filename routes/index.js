@@ -15,6 +15,8 @@ const bannerRouter = require("./bannerRouter");
 const statusOrder = require("./statusOrders");
 const partnerRouter = require("./partnerRouter");
 const auctionRouter = require("./auctionRouter");
+const productOfWeekRouter = require("./productOfWeekRouter");
+const deliveryCity = require("./deliveryCityRouter");
 
 router.use("/user", userRouter);
 router.use("/category", categoryRouter); // Corrected spelling of 'category'
@@ -26,8 +28,10 @@ router.use("/product", productRouter);
 router.use("/size", sizeRouter);
 router.use("/order", orderRouter);
 router.use("/order/status", statusOrder);
+router.use("/order/deliveryCity", deliveryCity);
 router.use("/basket", basketRouter);
 router.use("/banner", bannerRouter);
 router.use("/partner", partnerRouter);
 router.use("/auction", auctionRouter);
+router.use("/productOfWeek", productOfWeekRouter);
 module.exports = router;

@@ -7,6 +7,7 @@ const {
 } = require("../models/model");
 const ApiError = require("../error/apiError");
 const sequelize = require("../database");
+const { Op } = require("sequelize");
 
 class AuctionController {
   // Create a new subcategory
@@ -107,9 +108,96 @@ class AuctionController {
 
   //   async getAll(req, res, next) {
   //     try {
+  //       const {
+  //         minPrice,
+  //         maxPrice,
+  //         sortBy = "createdAt",
+  //         sortOrder = "DESC",
+  //         nameTm,
+  //         page = 1,
+  //         limit = 10,
+  //         startDateAuction, // User input for start date
+  //         endDateAuction, // User input for end date
+  //       } = req.query; // Accept values from query params
+
+  //       // Build filter conditions
+  //       const whereConditions = {};
+  //       const name = {};
+
+  //       if (minPrice) {
+  //         whereConditions.auctionProductPriceCurrent = {
+  //           [Op.gte]: minPrice, // Greater than or equal to minPrice
+  //         };
+  //       }
+
+  //       if (maxPrice) {
+  //         whereConditions.auctionProductPriceCurrent = {
+  //           [Op.lte]: maxPrice, // Less than or equal to maxPrice
+  //         };
+  //       }
+
+  //       if (nameTm) {
+  //         name.nameTm = {
+  //           [Op.iLike]: `%${nameTm}%`,
+  //         };
+  //       }
+  //       // Date range filters
+
+  //       if (startDateAuction && endDateAuction) {
+  //         const startDate = new Date(startDateAuction);
+  //         startDate.setHours(0, 0, 0, 0); // Start of the day
+
+  //         const endDate = new Date(endDateAuction);
+  //         endDate.setHours(23, 59, 59, 999); // End of the day
+
+  //         whereConditions[Op.or] = [
+  //           // Auction starts within the range
+  //           {
+  //             startDateAuction: { [Op.between]: [startDate, endDate] },
+  //           },
+  //           // Auction ends within the range
+  //           {
+  //             endDateAuction: { [Op.between]: [startDate, endDate] },
+  //           },
+  //           // Auction spans the entire range
+  //           {
+  //             [Op.and]: [
+  //               { startDateAuction: { [Op.lte]: startDate } },
+  //               { endDateAuction: { [Op.gte]: endDate } },
+  //             ],
+  //           },
+  //         ];
+  //       } else if (startDateAuction) {
+  //         const startDate = new Date(startDateAuction);
+  //         startDate.setHours(0, 0, 0, 0);
+
+  //         whereConditions[Op.or] = [
+  //           { startDateAuction: { [Op.gte]: startDate } },
+  //           { endDateAuction: { [Op.gte]: startDate } },
+  //         ];
+  //       } else if (endDateAuction) {
+  //         const endDate = new Date(endDateAuction);
+  //         endDate.setHours(23, 59, 59, 999);
+
+  //         whereConditions[Op.or] = [
+  //           { startDateAuction: { [Op.lte]: endDate } },
+  //           { endDateAuction: { [Op.lte]: endDate } },
+  //         ];
+  //       }
+
+  //       const countResult = await Auction.count({
+  //         where: whereConditions,
+
+  //         distinct: true, // Ensure distinct products are counted
+  //       });
+
+  //       // Fetch auctions with pagination and sorting
   //       const auctions = await Auction.findAll({
+  //         where: whereConditions,
   //         include: [
   //           {
+  //             where: name,
+
   //             model: Product,
   //             as: "product",
   //             attributes: ["nameTm", "nameEn", "nameRu", "imageOne"],
@@ -126,58 +214,189 @@ class AuctionController {
   //             attributes: ["id", "email"], // Include bidder info
   //           },
   //         ],
+  //         order: [[sortBy, sortOrder]], // Sort by field and order
+  //         offset: (page - 1) * limit, // Pagination offset
+  //         limit: limit, // Pagination limit
   //       });
 
-  //       return res.status(200).json(auctions);
+  //       return res.status(200).json({
+  //         totalItems: countResult,
+  //         totalPages: Math.ceil(countResult / limit),
+  //         currentPage: parseInt(page),
+  //         auctions: auctions,
+  //       });
+  //       //   return res.status(200).json(auctions);
   //     } catch (error) {
   //       console.error("Error fetching auctions:", error);
   //       return next(ApiError.badRequest("Ýalňyşlyk!"));
   //     }
   //   }
   async getAll(req, res, next) {
-    const { page = 1, limit = 10 } = req.query; // Default to page 1 and limit 10
-
     try {
-      const offset = (page - 1) * limit;
+      const {
+        minPrice,
+        maxPrice,
+        sortBy = "createdAt",
+        sortOrder = "DESC",
+        nameTm,
+        page = 1,
+        limit = 10,
+        startDateAuction,
+        endDateAuction,
+      } = req.query;
 
-      // Fetch auctions with pagination
+      const whereConditions = {};
+      const name = {};
+
+      if (minPrice) {
+        whereConditions.auctionProductPriceCurrent = {
+          [Op.gte]: minPrice,
+        };
+      }
+
+      if (maxPrice) {
+        whereConditions.auctionProductPriceCurrent = {
+          [Op.lte]: maxPrice,
+        };
+      }
+
+      if (nameTm) {
+        name.nameTm = {
+          [Op.iLike]: `%${nameTm}%`,
+        };
+      }
+
+      // Handle date filters
+      if (startDateAuction && endDateAuction) {
+        const startDate = new Date(startDateAuction);
+        startDate.setHours(0, 0, 0, 0);
+
+        const endDate = new Date(endDateAuction);
+        endDate.setHours(23, 59, 59, 999);
+
+        whereConditions[Op.or] = [
+          { startDateAuction: { [Op.between]: [startDate, endDate] } },
+          { endDateAuction: { [Op.between]: [startDate, endDate] } },
+          {
+            [Op.and]: [
+              { startDateAuction: { [Op.lte]: startDate } },
+              { endDateAuction: { [Op.gte]: endDate } },
+            ],
+          },
+        ];
+      } else if (startDateAuction) {
+        const startDate = new Date(startDateAuction);
+        startDate.setHours(0, 0, 0, 0);
+        whereConditions[Op.or] = [
+          { startDateAuction: { [Op.gte]: startDate } },
+          { endDateAuction: { [Op.gte]: startDate } },
+        ];
+      } else if (endDateAuction) {
+        const endDate = new Date(endDateAuction);
+        endDate.setHours(23, 59, 59, 999);
+        whereConditions[Op.or] = [
+          { startDateAuction: { [Op.lte]: endDate } },
+          { endDateAuction: { [Op.lte]: endDate } },
+        ];
+      }
+      const countResult = await Auction.count({
+        where: whereConditions,
+        distinct: true,
+      });
+      const currentDate = new Date();
+      currentDate.setHours(0, 0, 0, 0);
+
+      const fourDaysAgo = new Date(currentDate);
+      //   fourDaysAgo.setDate(currentDate.getDate() - 1);
+
       const auctions = await Auction.findAll({
+        where: whereConditions,
         include: [
           {
+            where: name,
             model: Product,
             as: "product",
-            attributes: ["id", "nameTm", "nameEn", "nameRu", "imageOne"],
+            attributes: ["nameTm", "nameEn", "nameRu", "imageOne"],
           },
           {
             model: User,
             as: "participants",
-            attributes: ["id", "email"], // Specify user fields to include
-            through: { attributes: [] }, // Exclude the join table fields
+            attributes: ["id", "email"],
+            through: { attributes: [] },
           },
           {
             model: User,
             as: "lastBidder",
-            attributes: ["id", "email"], // Include bidder info
+            attributes: ["id", "email"],
           },
         ],
-        limit,
-        offset,
+        order: [
+          [
+            sequelize.literal(
+              `CASE 
+                WHEN "startDateAuction" <= '${currentDate.toISOString()}' 
+                     AND "endDateAuction" >= '${currentDate.toISOString()}' THEN 0 
+                ELSE 1 
+               END`
+            ),
+            "ASC",
+          ],
+          [sortBy, sortOrder],
+        ],
+        offset: (page - 1) * limit,
+        limit: limit,
       });
 
-      // Fetch total count for pagination
-      const totalCount = await Auction.count();
+      // Update isActive flag based on the conditions
+      //   const updatedAuctions = auctions.map((auction) => {
+      //     const auctionStartDate = new Date(auction.startDateAuction);
+      //     auctionStartDate.setHours(0, 0, 0, 0);
+
+      //     const auctionEndDate = new Date(auction.endDateAuction);
+      //     auctionEndDate.setHours(0, 0, 0, 0);
+
+      //     // Determine if the auction is active
+      //     const isActive =
+      //       auctionStartDate.getTime() <= fourDaysAgo.getTime() &&
+      //       auctionEndDate.getTime() >= currentDate.getTime();
+
+      //     return {
+      //       ...auction.dataValues,
+      //       isActive: isActive,
+      //     };
+      //   });
+      const updatedAuctions = auctions.map((auction) => {
+        const auctionStartDate = new Date(auction.startDateAuction);
+        auctionStartDate.setHours(0, 0, 0, 0);
+
+        const auctionEndDate = new Date(auction.endDateAuction);
+        auctionEndDate.setHours(23, 59, 59, 999); // Use end of day for accurate comparison
+
+        const isActive =
+          auctionStartDate <= currentDate && currentDate <= auctionEndDate;
+
+        return {
+          ...auction.dataValues,
+          isActive: isActive,
+        };
+      });
 
       return res.status(200).json({
-        totalCount,
-        page: parseInt(page),
-        totalPages: Math.ceil(totalCount / limit),
-        auctions,
+        totalItems: countResult,
+        totalPages: Math.ceil(countResult / limit),
+        currentPage: parseInt(page),
+        auctions: updatedAuctions,
       });
+
+      //   return res.status(200).json({
+      //     totalItems: countResult,
+      //     totalPages: Math.ceil(countResult / limit),
+      //     currentPage: parseInt(page),
+      //     auctions: updatedAuctions,
+      //   });
     } catch (error) {
       console.error("Error fetching auctions:", error);
-      return next(
-        ApiError.badRequest("Error fetching auctions. Please try again later.")
-      );
+      return next(ApiError.badRequest("Ýalňyşlyk!"));
     }
   }
 
@@ -277,13 +496,13 @@ class AuctionController {
           {
             model: User,
             as: "participants",
-            attributes: ["id", "email"],
+            // attributes: ["id", "email"],
             through: { attributes: [] },
           },
           {
             model: User,
             as: "lastBidder",
-            attributes: ["id", "email"],
+            // attributes: ["id", "email"],
           },
         ],
       });
@@ -355,6 +574,7 @@ class AuctionController {
       const currentDate = new Date();
       const auctionStartDate = new Date(auction.startDateAuction);
       const auctionEndDate = new Date(auction.endDateAuction);
+      console.log(currentDate > auctionEndDate);
 
       if (currentDate > auctionEndDate) {
         await transaction.rollback();

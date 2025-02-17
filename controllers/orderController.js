@@ -1,7 +1,13 @@
 const sequelize = require("../database");
 const ApiError = require("../error/apiError");
 
-const { Product, Order, OrderItem, OrderStatus } = require("../models/model");
+const {
+  Product,
+  Order,
+  OrderItem,
+  OrderStatus,
+  OrderDeliveryCityPayment,
+} = require("../models/model");
 
 class OrderController {
   async create(req, res, next) {
@@ -20,7 +26,7 @@ class OrderController {
         customerSurname,
         customerPhoneNumber,
         orderRegion,
-        orderCity,
+        orderDeliveryCityPaymentId,
       } = req.body;
 
       if (!userId || !items || !Array.isArray(items) || items.length === 0) {
@@ -32,7 +38,7 @@ class OrderController {
       if (!existOrderStatus) {
         await transaction.rollback();
 
-        res.status(400).json({ message: `Status   not found` });
+        res.status(400).json({ message: `Order Status not found` });
         return;
       }
       let totalAmount = 0;
@@ -66,7 +72,10 @@ class OrderController {
 
         // Update product quantity
         await product.update(
-          { productQuantity: product.productQuantity - item.quantity },
+          {
+            productQuantity: product.productQuantity - item.quantity,
+            totalSelling: product.totalSelling + item.quantity,
+          },
           { transaction }
         );
       }
@@ -90,7 +99,7 @@ class OrderController {
           customerSurname,
           customerPhoneNumber,
           orderRegion,
-          orderCity,
+          orderDeliveryCityPaymentId,
           orderNumber: newOrderNumber, // Set the unique order number
         },
         { transaction }
@@ -465,13 +474,19 @@ class OrderController {
             include: [
               {
                 model: Product,
-                attributes: ["nameTm", "sellPrice", "imageOne"],
+                attributes: ["nameTm", "sellPrice", "imageOne", "totalSelling"],
               },
             ],
           },
           {
             model: OrderStatus,
-            as: "orderStatusDetails", // Use the alias from your association
+            as: "orderStatusDetails",
+            attributes: { exclude: ["createdAt", "updatedAt"] },
+          },
+          {
+            model: OrderDeliveryCityPayment,
+            as: "orderDeliveryCityPayment",
+            attributes: { exclude: ["createdAt", "updatedAt"] },
           },
         ],
         limit: parseInt(limit),
@@ -504,6 +519,11 @@ class OrderController {
           {
             model: OrderStatus,
             as: "orderStatusDetails", // Use the alias from your association
+          },
+          {
+            model: OrderDeliveryCityPayment,
+            as: "orderDeliveryCityPayment",
+            attributes: { exclude: ["createdAt", "updatedAt"] },
           },
         ],
       });
@@ -736,11 +756,9 @@ class OrderController {
         immutableStatuses.includes(currentOrderStatus.nameEn)
       ) {
         await transaction.rollback();
-        return res
-          .status(400)
-          .json({
-            message: "Cannot change status of a cancelled or delivered order",
-          });
+        return res.status(400).json({
+          message: "Cannot change status of a cancelled or delivered order",
+        });
       }
 
       // Проверка: Заказ уже имеет этот статус
@@ -761,7 +779,10 @@ class OrderController {
           const product = await Product.findByPk(orderItem.productId);
           if (product) {
             await product.update(
-              { productQuantity: product.productQuantity + orderItem.quantity },
+              {
+                productQuantity: product.productQuantity + orderItem.quantity,
+                totalSelling: product.totalSelling - orderItem.quantity,
+              },
               { transaction }
             );
           }
